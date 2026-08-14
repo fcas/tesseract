@@ -3,7 +3,7 @@ void build(Solution &s)
     auto &tess = s.addProject("google.tesseract", "main");
     tess += Git("https://github.com/tesseract-ocr/tesseract", "", "{v}");
 
-    auto cppstd = cpp17;
+    auto cppstd = cpp20;
 
     auto &libtesseract = tess.addTarget<LibraryTarget>("libtesseract");
     {
@@ -16,7 +16,6 @@ void build(Solution &s)
         libtesseract += "TESS_API"_api;
         libtesseract += "include/.*"_rr;
         libtesseract += "src/.+/.*"_rr;
-        libtesseract -= "src/lstm/.*\\.cc"_rr;
         libtesseract -= "src/training/.*"_rr;
 
         libtesseract.Public += "include"_idir;
@@ -335,8 +334,7 @@ void build(Solution &s)
 
         auto &tw = add_test("tatweel");
         tw += "unittest/util/.*"_rr;
-        tw += "unittest/third_party/.*"_rr;
-        tw -= "unittest/third_party/googletest/.*"_rr;
+        tw += "unittest/third_party/utf/.*"_rr;
     }
 }
 

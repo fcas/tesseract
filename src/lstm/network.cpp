@@ -26,9 +26,9 @@
 
 // This base class needs to know about all its sub-classes because of the
 // factory deserializing method: CreateFromFile.
-#include <allheaders.h>
 #include "convolve.h"
 #include "fullyconnected.h"
+#include "image.h"          // for Image
 #include "input.h"
 #include "lstm.h"
 #include "maxpool.h"
@@ -38,9 +38,6 @@
 #include "scrollview.h"
 #include "series.h"
 #include "statistc.h"
-#ifdef INCLUDE_TENSORFLOW
-#  include "tfnetwork.h"
-#endif
 #include "tprintf.h"
 
 namespace tesseract {
@@ -250,6 +247,12 @@ Network *Network::CreateFromFile(TFile *fp) {
     return nullptr;
   }
 
+  if (ni < 0 || no < 0 || num_weights < 0) {
+    tprintf("Error: invalid network layer parameters: type=%d ni=%d no=%d num_weights=%d\n", type,
+            ni, no, num_weights);
+    return nullptr;
+  }
+
   switch (type) {
     case NT_CONVOLVE:
       network = new Convolve(name, ni, 0, 0);
@@ -287,11 +290,7 @@ Network *Network::CreateFromFile(TFile *fp) {
       network = new Series(name);
       break;
     case NT_TENSORFLOW:
-#ifdef INCLUDE_TENSORFLOW
-      network = new TFNetwork(name);
-#else
-      tprintf("TensorFlow not compiled in! -DINCLUDE_TENSORFLOW\n");
-#endif
+      tprintf("Unsupported TensorFlow model\n");
       break;
     // All variants of FullyConnected.
     case NT_SOFTMAX:

@@ -28,8 +28,8 @@ AM_INIT_AUTOMAKE([foreign subdir-objects nostdinc])
 
 # Define date of package, etc. Could be useful in auto-generated
 # documentation.
-PACKAGE_YEAR=2024
-PACKAGE_DATE="05/12"
+PACKAGE_YEAR=2026
+PACKAGE_DATE="07/24"
 
 abs_top_srcdir=`AS_DIRNAME([$0])`
 
@@ -72,6 +72,7 @@ AC_CONFIG_HEADERS([include/config_auto.h:config/config.h.in])
 
 # default conditional
 AM_CONDITIONAL([T_WIN], false)
+AM_CONDITIONAL([MINGW], false)
 AM_CONDITIONAL([GRAPHICS_DISABLED], false)
 AC_SUBST([AM_CPPFLAGS])
 
@@ -87,7 +88,9 @@ AM_SILENT_RULES([yes])
 AC_CANONICAL_HOST
 case "${host_os}" in
     mingw*)
+        AC_DEFINE_UNQUOTED([MINGW], 1, [This is a MinGW system])
         AM_CONDITIONAL([T_WIN], true)
+        AM_CONDITIONAL([MINGW], true)
         AM_CONDITIONAL([ADD_RT], false)
         AC_SUBST([AM_LDFLAGS], ['-no-undefined'])
         ;;
@@ -128,6 +131,7 @@ AM_CONDITIONAL([HAVE_AVX512F], false)
 AM_CONDITIONAL([HAVE_FMA], false)
 AM_CONDITIONAL([HAVE_SSE4_1], false)
 AM_CONDITIONAL([HAVE_NEON], false)
+AM_CONDITIONAL([HAVE_RVV], false)
 
 case "${host_cpu}" in
 
@@ -185,6 +189,16 @@ case "${host_cpu}" in
 
     ;;
 
+  riscv*)
+
+    AX_CHECK_COMPILE_FLAG([-march=rv64gcv], [rvv=true], [rvv=false], [$WERROR])
+    AM_CONDITIONAL([HAVE_RVV], [$rvv])
+    if $rvv; then
+      AC_DEFINE([HAVE_RVV], [1], [Enable RVV instructions])
+      check_for_rvv=1
+    fi
+    ;;
+
   *)
 
     AC_MSG_WARN([No compiler options for $host_cpu])
@@ -201,6 +215,16 @@ if test x$check_for_neon = x1; then
 
   if test $ac_cv_func_getauxval = no && test $ac_cv_func_elf_aux_info = no && test $ac_cv_func_android_getCpuFamily = no; then
       AC_MSG_WARN([NEON is available, but we don't know how to check for it.  Will not be able to use NEON.])
+  fi
+fi
+
+# additional checks for RVV targets
+if test x$check_for_rvv = x1; then
+  AC_MSG_NOTICE([checking how to detect RVV availability])
+  AC_CHECK_FUNCS([getauxval elf_aux_info])
+
+  if test $ac_cv_func_getauxval = no && test $ac_cv_func_elf_aux_info = no; then
+      AC_MSG_WARN([RVV is available, but we don't know how to check for it.  Will not be able to use RVV.])
   fi
 fi
 
@@ -267,25 +291,6 @@ AC_ARG_WITH([curl],
             AS_HELP_STRING([--with-curl],
                            [Build with libcurl which supports processing an image URL @<:@default=check@:>@]),
             [], [with_curl=check])
-AC_ARG_WITH([tensorflow],
-  AS_HELP_STRING([--with-tensorflow],
-                 [support TensorFlow @<:@default=check@:>@]),
-  [], [with_tensorflow=check])
-
-# Check whether to build with support for TensorFlow.
-AM_CONDITIONAL([TENSORFLOW], false)
-TENSORFLOW_LIBS=
-AS_IF([test "x$with_tensorflow" != xno],
-  [AC_CHECK_HEADERS([tensorflow/core/framework/graph.pb.h],
-    [AC_SUBST([TENSORFLOW_LIBS], ["-lprotobuf -ltensorflow_cc"])
-      AM_CONDITIONAL([TENSORFLOW], true)
-    ],
-    [if test "x$with_tensorflow" != xcheck; then
-      AC_MSG_FAILURE(
-        [--with-tensorflow was given, but test for libtensorflow-dev failed])
-     fi
-    ])
-  ])
 
 # https://lists.apple.com/archives/unix-porting/2009/Jan/msg00026.html
 m4_define([MY_CHECK_FRAMEWORK],
@@ -307,6 +312,8 @@ m4_define([MY_CHECK_FRAMEWORK],
 
 case "${host_os}" in
   *darwin* | *-macos10*)
+    test -z "$MACOSX_DEPLOYMENT_TARGET" && MACOSX_DEPLOYMENT_TARGET=$(sw_vers -productVersion 2>/dev/null || echo 10.15)
+    AC_SUBST([MACOSX_DEPLOYMENT_TARGET])
     MY_CHECK_FRAMEWORK([Accelerate])
     if test $my_cv_framework_Accelerate = yes; then
       AM_CPPFLAGS="-DHAVE_FRAMEWORK_ACCELERATE $AM_CPPFLAGS"
@@ -319,7 +326,7 @@ case "${host_os}" in
 esac
 
 # check whether to build tesseract with -fvisibility=hidden -fvisibility-inlines-hidden
-# http://gcc.gnu.org/wiki/Visibility
+# https://gcc.gnu.org/wiki/Visibility
 # https://groups.google.com/g/tesseract-dev/c/l2ZFrpgYkSc/m/_cdYSRDSXuUJ
 AC_MSG_CHECKING([--enable-visibility argument])
 AC_ARG_ENABLE([visibility],
@@ -432,36 +439,24 @@ fi
 # Check for programs needed to build documentation.
 # ----------------------------------------
 
-AM_CONDITIONAL([ASCIIDOC], false)
-AM_CONDITIONAL([HAVE_XML_CATALOG_FILES], false)
+AM_CONDITIONAL([ASCIIDOCTOR], false)
+AM_CONDITIONAL([ASCIIDOCTOR_PDF], false)
 AC_ARG_ENABLE([doc],
               AS_HELP_STRING([--disable-doc], [disable build of documentation])
               [],
               [: m4_divert_text([DEFAULTS], [enable_doc=check])])
 AS_IF([test "$enable_doc" != "no"], [
-  AC_CHECK_PROG([have_asciidoc], asciidoc, true, false)
-  AC_CHECK_PROG([have_xsltproc], xsltproc, true, false)
-  # macOS with Homebrew requires the environment variable
-  # XML_CATALOG_FILES for xsltproc.
-  if $have_asciidoc && $have_xsltproc; then
-    AM_CONDITIONAL([ASCIIDOC], true)
-    XML_CATALOG_FILES=
-    if $have_brew; then
-      catalog_file=$brew_prefix/etc/xml/catalog
-      if test -f $catalog_file; then
-        AM_CONDITIONAL([HAVE_XML_CATALOG_FILES], true)
-        XML_CATALOG_FILES=file:$catalog_file
-      else
-        AC_MSG_WARN([Missing file $catalog_file.])
-      fi
-    fi
-    AC_SUBST([XML_CATALOG_FILES])
+  AC_CHECK_PROG([have_asciidoctor], asciidoctor, true, false)
+  if $have_asciidoctor; then
+    AM_CONDITIONAL([ASCIIDOCTOR], true)
   else
     AS_IF([test "x$enable_doc" != xcheck], [
       AC_MSG_FAILURE(
-        [--enable-doc was given, but test for asciidoc and xsltproc failed])
+        [--enable-doc was given, but test for asciidoctor failed])
     ])
   fi
+  AC_CHECK_PROG([have_asciidoctor_pdf], asciidoctor-pdf, true, false)
+  AM_CONDITIONAL([ASCIIDOCTOR_PDF], $have_asciidoctor_pdf)
 ])
 
 # ----------------------------------------
@@ -559,6 +554,7 @@ AC_CONFIG_FILES([java/com/google/Makefile])
 AC_CONFIG_FILES([java/com/google/scrollview/Makefile])
 AC_CONFIG_FILES([java/com/google/scrollview/events/Makefile])
 AC_CONFIG_FILES([java/com/google/scrollview/ui/Makefile])
+AC_CONFIG_FILES([nsis/Makefile])
 AC_OUTPUT
 
 # Final message
@@ -571,13 +567,17 @@ echo "$ sudo make install"
 echo "$ sudo ldconfig"
 echo ""
 
-AM_COND_IF([ASCIIDOC], [
-  echo "This will also build the documentation."
+AM_COND_IF([ASCIIDOCTOR], [
+  AM_COND_IF([ASCIIDOCTOR_PDF], [
+    echo "This will also build the documentation (including PDF)."
+  ], [
+    echo "This will also build the documentation (PDF skipped: asciidoctor-pdf not found)."
+  ])
 ], [
   AS_IF([test "$enable_doc" = "no"], [
     echo "Documentation will not be built because it was disabled."
   ], [
-    echo "Documentation will not be built because asciidoc or xsltproc is missing."
+    echo "Documentation will not be built because asciidoctor is missing."
   ])
 ])
 

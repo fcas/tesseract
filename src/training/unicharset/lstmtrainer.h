@@ -119,10 +119,6 @@ public:
   bool InitNetwork(const char *network_spec, int append_index, int net_flags,
                    float weight_range, float learning_rate, float momentum,
                    float adam_beta);
-  // Initializes a trainer from a serialized TFNetworkModel proto.
-  // Returns the global step of TensorFlow graph or 0 if failed.
-  // Building a compatible TF graph: See tfnetwork.proto.
-  int InitTensorFlowNetwork(const std::string &tf_proto);
   // Resets all the iteration counters for fine tuning or training a head,
   // where we want the error reporting to reset.
   void InitIterations();
@@ -347,7 +343,7 @@ protected:
   // as an image in the given window, and the corresponding labels at the
   // corresponding x_starts.
   // Returns false if the truth string is empty.
-  bool DebugLSTMTraining(const NetworkIO &inputs, const ImageData &trainingdata,
+  bool DebugLSTMTraining(const NetworkIO &inputs,
                          const NetworkIO &fwd_outputs,
                          const std::vector<int> &truth_labels,
                          const NetworkIO &outputs);
@@ -357,8 +353,7 @@ protected:
 
   // Builds a no-compromises target where the first positions should be the
   // truth labels and the rest is padded with the null_char_.
-  bool ComputeTextTargets(const NetworkIO &outputs,
-                          const std::vector<int> &truth_labels,
+  bool ComputeTextTargets(const std::vector<int> &truth_labels,
                           NetworkIO *targets);
 
   // Builds a target using standard CTC. truth_labels should be pre-padded with

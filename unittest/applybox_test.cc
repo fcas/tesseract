@@ -9,11 +9,11 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-#include <allheaders.h>
 #include <tesseract/baseapi.h>
 #include <tesseract/resultiterator.h>
 #include <string>
 #include "boxread.h"
+#include "image.h"   // for Image
 #include "rect.h"
 
 #include "include_gunit.h"
@@ -64,7 +64,6 @@ protected:
     if (!SetImage(imagefile)) {
       // eng.traineddata not found or other problem during Init.
       GTEST_SKIP();
-      return;
     }
     if (line_mode) {
       api_.SetVariable("tessedit_resegment_from_line_boxes", "1");

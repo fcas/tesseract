@@ -24,10 +24,9 @@
 
 #include "clst.h"
 #include "coutln.h"
+#include "image.h"      // for Image
 #include "rect.h"
 #include "scrollview.h"
-
-#include <allheaders.h>
 
 class BLOCK;
 
@@ -364,10 +363,7 @@ private:
 
 // Sort function to sort a BBC by bounding_box().left().
 template <class BBC>
-int SortByBoxLeft(const void *void1, const void *void2) {
-  // The void*s are actually doubly indirected, so get rid of one level.
-  const BBC *p1 = *static_cast<const BBC *const *>(void1);
-  const BBC *p2 = *static_cast<const BBC *const *>(void2);
+int SortByBoxLeft(const BBC *p1, const BBC *p2) {
   int result = p1->bounding_box().left() - p2->bounding_box().left();
   if (result != 0) {
     return result;
@@ -384,10 +380,7 @@ int SortByBoxLeft(const void *void1, const void *void2) {
 }
 
 template <class BBC>
-bool StdSortByBoxLeft(const void *void1, const void *void2) {
-  // The void*s are actually doubly indirected, so get rid of one level.
-  const BBC *p1 = *static_cast<const BBC *const *>(void1);
-  const BBC *p2 = *static_cast<const BBC *const *>(void2);
+bool StdSortByBoxLeft(const BBC *p1, const BBC *p2) {
   int result = p1->bounding_box().left() - p2->bounding_box().left();
   if (result != 0) {
     return result < 0;
@@ -405,10 +398,7 @@ bool StdSortByBoxLeft(const void *void1, const void *void2) {
 
 // Sort function to sort a BBC by bounding_box().right() in right-to-left order.
 template <class BBC>
-int SortRightToLeft(const void *void1, const void *void2) {
-  // The void*s are actually doubly indirected, so get rid of one level.
-  const BBC *p1 = *static_cast<const BBC *const *>(void1);
-  const BBC *p2 = *static_cast<const BBC *const *>(void2);
+int SortRightToLeft(const BBC *p1, const BBC *p2) {
   int result = p2->bounding_box().right() - p1->bounding_box().right();
   if (result != 0) {
     return result;
@@ -425,10 +415,7 @@ int SortRightToLeft(const void *void1, const void *void2) {
 }
 
 template <class BBC>
-bool StdSortRightToLeft(const void *void1, const void *void2) {
-  // The void*s are actually doubly indirected, so get rid of one level.
-  const BBC *p1 = *static_cast<const BBC *const *>(void1);
-  const BBC *p2 = *static_cast<const BBC *const *>(void2);
+bool StdSortRightToLeft(const BBC *p1, const BBC *p2) {
   int result = p2->bounding_box().right() - p1->bounding_box().right();
   if (result != 0) {
     return result < 0;
@@ -446,10 +433,7 @@ bool StdSortRightToLeft(const void *void1, const void *void2) {
 
 // Sort function to sort a BBC by bounding_box().bottom().
 template <class BBC>
-int SortByBoxBottom(const void *void1, const void *void2) {
-  // The void*s are actually doubly indirected, so get rid of one level.
-  const BBC *p1 = *static_cast<const BBC *const *>(void1);
-  const BBC *p2 = *static_cast<const BBC *const *>(void2);
+int SortByBoxBottom(const BBC *p1, const BBC *p2) {
   int result = p1->bounding_box().bottom() - p2->bounding_box().bottom();
   if (result != 0) {
     return result;
@@ -561,7 +545,7 @@ void BBGrid<BBC, BBC_CLIST, BBC_C_IT>::InsertPixPtBBox(int left, int bottom, Ima
   for (int y = 0; y < height; ++y) {
     l_uint32 *data = pixGetData(pix) + y * pixGetWpl(pix);
     for (int x = 0; x < width; ++x) {
-      if (GET_DATA_BIT(data, x)) {
+      if (Image::getDataBit(data, x)) {
         grid_[(bottom + y) * gridwidth_ + x + left].add_sorted(SortByBoxLeft<BBC>, true, bbox);
       }
     }

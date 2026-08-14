@@ -36,7 +36,7 @@ class TO_ROW;
 
 struct PARA;
 
-class ROW : public ELIST_LINK {
+class ROW : public ELIST<ROW>::LINK {
   friend void tweak_row_baseline(ROW *, double, double);
 
 public:
@@ -126,8 +126,7 @@ public:
   void move(             // reposition row
       const ICOORD vec); // by vector
 
-  void print(    // print
-      FILE *fp) const; // file to print on
+  void print() const; // print
 
 #ifndef GRAPHICS_DISABLED
   void plot(                     // draw one

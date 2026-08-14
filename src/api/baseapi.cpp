@@ -33,8 +33,9 @@
 #include "equationdetect.h" // for EquationDetect, destructor of equ_detect_
 #endif // ndef DISABLED_LEGACY_ENGINE
 #include "errcode.h" // for ASSERT_HOST
-#include "helpers.h" // for IntCastRounded, chomp_string
+#include "helpers.h" // for IntCastRounded, chomp_string, copy_string
 #include "host.h"    // for MAX_PATH
+#include "image.h"   // for Image, Leptonica (pixDestroy, boxCreate, ...)
 #include "imageio.h" // for IFF_TIFF_G4, IFF_TIFF, IFF_TIFF_G3, ...
 #ifndef DISABLED_LEGACY_ENGINE
 #  include "intfx.h" // for INT_FX_RESULT_STRUCT
@@ -64,15 +65,16 @@
 #include <cmath>    // for round, M_PI
 #include <cstdint>  // for int32_t
 #include <cstring>  // for strcmp, strcpy
+#include <filesystem> // for std::filesystem
 #include <fstream>  // for size_t
 #include <iostream> // for std::cin
 #include <locale>   // for std::locale::classic
 #include <memory>   // for std::unique_ptr
 #include <set>      // for std::pair
 #include <sstream>  // for std::stringstream
+#include <string_view>
 #include <vector>   // for std::vector
 
-#include <allheaders.h> // for pixDestroy, boxCreate, boxaAddBox, box...
 #ifdef HAVE_LIBCURL
 #  include <curl/curl.h>
 #endif
@@ -82,15 +84,9 @@
 #endif
 
 #if defined(_WIN32)
-#  include <fcntl.h>
-#  include <io.h>
-#else
-#  include <dirent.h> // for closedir, opendir, readdir, DIR, dirent
-#  include <libgen.h>
-#  include <sys/stat.h> // for stat, S_IFDIR
-#  include <sys/types.h>
-#  include <unistd.h>
-#endif // _WIN32
+#  include <fcntl.h> // for _O_BINARY
+#  include <io.h>    // for _setmode
+#endif
 
 namespace tesseract {
 
@@ -130,18 +126,21 @@ static STRING_VAR(classify_font_name, kUnknownFontName,
 // /path/to/dir/[lang].[fontname].exp[num]
 // The [lang], [fontname] and [num] fields should not have '.' characters.
 // If the global parameter classify_font_name is set, its value is used instead.
-static void ExtractFontName(const char* filename, std::string* fontname) {
+static void ExtractFontName(std::string_view filename, std::string* fontname) {
   *fontname = classify_font_name;
   if (*fontname == kUnknownFontName) {
     // filename is expected to be of the form [lang].[fontname].exp[num]
     // The [lang], [fontname] and [num] fields should not have '.' characters.
-    const char *basename = strrchr(filename, '/');
-    const char *firstdot = strchr(basename ? basename : filename, '.');
-    const char *lastdot  = strrchr(filename, '.');
-    if (firstdot != lastdot && firstdot != nullptr && lastdot != nullptr) {
+    auto basename_pos = filename.find_last_of('/');
+    auto view = (basename_pos != std::string_view::npos)
+                    ? filename.substr(basename_pos + 1)
+                    : filename;
+    auto firstdot = view.find_first_of('.');
+    auto lastdot = view.find_last_of('.');
+    if (firstdot != lastdot && firstdot != std::string_view::npos &&
+        lastdot != std::string_view::npos) {
       ++firstdot;
-      *fontname = firstdot;
-      fontname->resize(lastdot - firstdot);
+      *fontname = view.substr(firstdot, lastdot - firstdot);
     }
   }
 }
@@ -149,61 +148,17 @@ static void ExtractFontName(const char* filename, std::string* fontname) {
 
 /* Add all available languages recursively.
  */
-static void addAvailableLanguages(const std::string &datadir, const std::string &base,
+static void addAvailableLanguages(const std::string &datadir,
                                   std::vector<std::string> *langs) {
-  auto base2 = base;
-  if (!base2.empty()) {
-    base2 += "/";
-  }
-  const size_t extlen = sizeof(kTrainedDataSuffix);
-#ifdef _WIN32
-  WIN32_FIND_DATA data;
-  HANDLE handle = FindFirstFile((datadir + base2 + "*").c_str(), &data);
-  if (handle != INVALID_HANDLE_VALUE) {
-    BOOL result = TRUE;
-    for (; result;) {
-      char *name = data.cFileName;
-      // Skip '.', '..', and hidden files
-      if (name[0] != '.') {
-        if ((data.dwFileAttributes & FILE_ATTRIBUTE_DIRECTORY) == FILE_ATTRIBUTE_DIRECTORY) {
-          addAvailableLanguages(datadir, base2 + name, langs);
-        } else {
-          size_t len = strlen(name);
-          if (len > extlen && name[len - extlen] == '.' &&
-              strcmp(&name[len - extlen + 1], kTrainedDataSuffix) == 0) {
-            name[len - extlen] = '\0';
-            langs->push_back(base2 + name);
-          }
-        }
-      }
-      result = FindNextFile(handle, &data);
+  for (const auto& entry :
+       std::filesystem::recursive_directory_iterator(datadir,
+         std::filesystem::directory_options::follow_directory_symlink |
+         std::filesystem::directory_options::skip_permission_denied)) {
+    auto path = entry.path().lexically_relative(datadir);
+    if (path.extension() == ".traineddata") {
+      langs->push_back(path.replace_extension("").string());
     }
-    FindClose(handle);
   }
-#else // _WIN32
-  DIR *dir = opendir((datadir + base).c_str());
-  if (dir != nullptr) {
-    dirent *de;
-    while ((de = readdir(dir))) {
-      char *name = de->d_name;
-      // Skip '.', '..', and hidden files
-      if (name[0] != '.') {
-        struct stat st;
-        if (stat((datadir + base2 + name).c_str(), &st) == 0 && (st.st_mode & S_IFDIR) == S_IFDIR) {
-          addAvailableLanguages(datadir, base2 + name, langs);
-        } else {
-          size_t len = strlen(name);
-          if (len > extlen && name[len - extlen] == '.' &&
-              strcmp(&name[len - extlen + 1], kTrainedDataSuffix) == 0) {
-            name[len - extlen] = '\0';
-            langs->push_back(base2 + name);
-          }
-        }
-      }
-    }
-    closedir(dir);
-  }
-#endif
 }
 
 TessBaseAPI::TessBaseAPI()
@@ -274,7 +229,7 @@ bool TessBaseAPI::GetIntVariable(const char *name, int *value) const {
   if (p == nullptr) {
     return false;
   }
-  *value = (int32_t)(*p);
+  *value = static_cast<int32_t>(*p);
   return true;
 }
 
@@ -300,7 +255,7 @@ bool TessBaseAPI::GetDoubleVariable(const char *name, double *value) const {
   if (p == nullptr) {
     return false;
   }
-  *value = (double)(*p);
+  *value = static_cast<double>(*p);
   return true;
 }
 
@@ -444,7 +399,7 @@ void TessBaseAPI::GetLoadedLanguagesAsVector(std::vector<std::string> *langs) co
 void TessBaseAPI::GetAvailableLanguagesAsVector(std::vector<std::string> *langs) const {
   langs->clear();
   if (tesseract_ != nullptr) {
-    addAvailableLanguages(tesseract_->datadir, "", langs);
+    addAvailableLanguages(tesseract_->datadir, langs);
     std::sort(langs->begin(), langs->end());
   }
 }
@@ -576,7 +531,7 @@ void TessBaseAPI::SetImage(Pix *pix) {
       // remove alpha channel from png
       Pix *p1 = pixRemoveAlpha(pix);
       pixSetSpp(p1, 3);
-      (void)pixCopy(pix, p1);
+      static_cast<void>(pixCopy(pix, p1));
       pixDestroy(&p1);
     }
     thresholder_->SetImage(pix);
@@ -862,12 +817,12 @@ int TessBaseAPI::Recognize(ETEXT_DESC *monitor) {
 #ifndef DISABLED_LEGACY_ENGINE
   } else if (tesseract_->tessedit_train_from_boxes) {
     std::string fontname;
-    ExtractFontName(output_file_.c_str(), &fontname);
+    ExtractFontName(output_file_, &fontname);
     tesseract_->ApplyBoxTraining(fontname, page_res_);
   } else if (tesseract_->tessedit_ambigs_training) {
     FILE *training_output_file = tesseract_->init_recog_training(input_file_.c_str());
     // OCR the page segmented into words by tesseract.
-    tesseract_->recog_training_segmented(input_file_.c_str(), page_res_, monitor,
+    tesseract_->recog_training_segmented(input_file_.c_str(), page_res_,
                                          training_output_file);
     fclose(training_output_file);
 #endif // ndef DISABLED_LEGACY_ENGINE
@@ -1090,7 +1045,7 @@ bool TessBaseAPI::ProcessPagesInternal(const char *filename, const char *retry_c
                                 tesseract_->tessedit_page_number);
   }
 
-  // At this point we are officially in autodection territory.
+  // At this point we are officially in autodetection territory.
   // That means any data in stdin must be buffered, to make it
   // seekable.
   std::string buf;
@@ -1378,9 +1333,7 @@ char *TessBaseAPI::GetUTF8Text() {
     const std::unique_ptr<const char[]> para_text(it->GetUTF8Text(RIL_PARA));
     text += para_text.get();
   } while (it->Next(RIL_PARA));
-  char *result = new char[text.length() + 1];
-  strncpy(result, text.c_str(), text.length() + 1);
-  return result;
+  return copy_string(text);
 }
 
 static void AddBoxToTSV(const PageIterator *it, PageIteratorLevel level, std::string &text) {
@@ -1402,7 +1355,9 @@ char *TessBaseAPI::GetTSVText(int page_number) {
     return nullptr;
   }
 
+#if !defined(NDEBUG)
   int lcnt = 1, bcnt = 1, pcnt = 1, wcnt = 1;
+#endif
   int page_id = page_number + 1; // we use 1-based page numbers.
 
   int page_num = page_id;
@@ -1484,6 +1439,7 @@ char *TessBaseAPI::GetTSVText(int page_number) {
     tsv_str += "\t" + std::to_string(res_it->Confidence(RIL_WORD));
     tsv_str += "\t";
 
+#if !defined(NDEBUG)
     // Increment counts if at end of block/paragraph/textline.
     if (res_it->IsAtFinalElement(RIL_TEXTLINE, RIL_WORD)) {
       lcnt++;
@@ -1494,18 +1450,19 @@ char *TessBaseAPI::GetTSVText(int page_number) {
     if (res_it->IsAtFinalElement(RIL_BLOCK, RIL_WORD)) {
       bcnt++;
     }
+#endif
 
     do {
       tsv_str += std::unique_ptr<const char[]>(res_it->GetUTF8Text(RIL_SYMBOL)).get();
       res_it->Next(RIL_SYMBOL);
     } while (!res_it->Empty(RIL_BLOCK) && !res_it->IsAtBeginningOf(RIL_WORD));
     tsv_str += "\n"; // end of row
+#if !defined(NDEBUG)
     wcnt++;
+#endif
   }
 
-  char *ret = new char[tsv_str.length() + 1];
-  strcpy(ret, tsv_str.c_str());
-  return ret;
+  return copy_string(tsv_str);
 }
 
 /** The 5 numbers output for each box (the usual 4 and a page number.) */
@@ -1753,10 +1710,7 @@ char *TessBaseAPI::GetOsdText(int page_number) {
          << "Orientation confidence: " << orient_conf << "\n"
          << "Script: " << script_name << "\n"
          << "Script confidence: " << script_conf << "\n";
-  const std::string &text = stream.str();
-  char *result = new char[text.length() + 1];
-  strcpy(result, text.c_str());
-  return result;
+  return copy_string(stream.str());
 }
 
 #endif // ndef DISABLED_LEGACY_ENGINE
@@ -2185,7 +2139,7 @@ int TessBaseAPI::FindLines() {
 
   // If Devanagari is being recognized, we use different images for page seg
   // and for OCR.
-  tesseract_->PrepareForTessOCR(block_list_, osd_tess, &osr);
+  tesseract_->PrepareForTessOCR(block_list_);
   return 0;
 }
 

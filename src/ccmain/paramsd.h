@@ -26,6 +26,8 @@
 #  include "elst.h"       // for ELIST_ITERATOR, ELISTIZEH, ELIST_LINK
 #  include "scrollview.h" // for ScrollView (ptr only), SVEvent (ptr only)
 
+#include <string>
+
 namespace tesseract {
 
 class SVMenuNode;
@@ -44,10 +46,10 @@ enum ParamType { VT_INTEGER, VT_BOOLEAN, VT_STRING, VT_DOUBLE };
 // comparisond or getting its value. It is used in the context of the
 // ParamsEditor as a bridge from the internal tesseract parameters to the
 // ones displayed by the ScrollView server.
-class ParamContent : public ELIST_LINK {
+class ParamContent : public ELIST<ParamContent>::LINK {
 public:
   // Compare two VC objects by their name.
-  static int Compare(const void *v1, const void *v2);
+  static int Compare(const ParamContent *v1, const ParamContent *v2);
 
   // Gets a VC object identified by its ID.
   static ParamContent *GetParamContentById(int id);
@@ -119,7 +121,7 @@ private:
   SVMenuNode *BuildListOfAllLeaves(tesseract::Tesseract *tess);
 
   // Write all (changed_) parameters to a config file.
-  void WriteParams(char *filename, bool changes_only);
+  void WriteParams(const std::string &filename, bool changes_only);
 
   ScrollView *sv_window_;
 };

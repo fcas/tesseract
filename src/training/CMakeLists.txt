@@ -1,26 +1,20 @@
 #
-# tesseract
+# tesseract training tools
 #
 if(NOT ${CMAKE_VERSION} VERSION_LESS "3.12.0")
   cmake_policy(SET CMP0074 NEW)
 endif()
 
-if(UNIX AND NOT ANDROID)
-  set(LIB_pthread pthread)
-endif()
+# Include build optimizations
+include(BuildOptimizations)
 
-if(SW_BUILD)
-  set(ICU_FOUND 1)
-else() # NOT SW_BUILD
-  find_package(PkgConfig)
-endif()
+find_package(PkgConfig)
 
 # experimental
 # If PkgConfig is not present training tools will not be build,
 # so it does not make sense to set ICU.
 if(MSVC
    AND PKG_CONFIG_FOUND
-   AND NOT SW_BUILD
    AND NOT USE_SYSTEM_ICU)
   include(CheckTypeSize)
   check_type_size("void *" SIZEOF_VOID_P)
@@ -68,18 +62,16 @@ if(MSVC
 endif()
 # experimental
 
-if(NOT SW_BUILD)
-  if(PKG_CONFIG_FOUND)
-    pkg_check_modules(ICU REQUIRED IMPORTED_TARGET icu-uc icu-i18n)
-  else()
-    find_package(ICU 52.1 COMPONENTS uc i18n)
-  endif()
-  if(ICU_FOUND)
-    message(">> ICU_FOUND ${ICU_FOUND} ${ICU_VERSION} ${ICU_LIBRARIES} ${ICU_INCLUDE_DIRS}")
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ICU_CXX_FLAGS}")
-  else()
-    message(">> ICU not found!")
-  endif()
+if(PKG_CONFIG_FOUND)
+  pkg_check_modules(ICU REQUIRED IMPORTED_TARGET icu-uc icu-i18n)
+else()
+  find_package(ICU 52.1 COMPONENTS uc i18n)
+endif()
+if(ICU_FOUND)
+  message(">> ICU_FOUND ${ICU_FOUND} ${ICU_VERSION} ${ICU_LIBRARIES} ${ICU_INCLUDE_DIRS}")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${ICU_CXX_FLAGS}")
+else()
+  message(">> ICU not found!")
 endif()
 
 
@@ -119,6 +111,9 @@ add_library(common_training ${COMMON_TRAINING_SRC})
 target_include_directories(common_training PUBLIC common
                                                   ${CMAKE_CURRENT_BINARY_DIR})
 target_link_libraries(common_training PUBLIC libtesseract)
+
+# Apply modern build optimizations
+apply_training_optimizations(common_training)
 install(
   TARGETS common_training
   RUNTIME DESTINATION bin
@@ -126,6 +121,9 @@ install(
   ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
 generate_export_header(common_training EXPORT_MACRO_NAME
                        TESS_COMMON_TRAINING_API)
+if (MSVC AND BUILD_SHARED_LIBS)
+  install(FILES $<TARGET_PDB_FILE:common_training> DESTINATION bin OPTIONAL)
+endif()
 project_group(common_training "Training Tools")
 
 # ##############################################################################
@@ -141,6 +139,9 @@ if(NOT DISABLED_LEGACY_ENGINE)
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib)
+  if (MSVC)
+    install(FILES $<TARGET_PDB_FILE:ambiguous_words> DESTINATION bin OPTIONAL)
+  endif()
 endif()
 
 # ##############################################################################
@@ -156,6 +157,9 @@ if(NOT DISABLED_LEGACY_ENGINE)
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib)
+  if (MSVC)
+    install(FILES $<TARGET_PDB_FILE:classifier_tester> DESTINATION bin OPTIONAL)
+  endif()
 endif()
 
 # ##############################################################################
@@ -170,6 +174,9 @@ install(
   RUNTIME DESTINATION bin
   LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib)
+if (MSVC)
+  install(FILES $<TARGET_PDB_FILE:combine_tessdata> DESTINATION bin OPTIONAL)
+endif()
 
 # ##############################################################################
 # EXECUTABLE cntraining
@@ -184,6 +191,9 @@ if(NOT DISABLED_LEGACY_ENGINE)
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib)
+  if (MSVC)
+    install(FILES $<TARGET_PDB_FILE:cntraining> DESTINATION bin OPTIONAL)
+  endif()
 endif()
 
 # ##############################################################################
@@ -198,6 +208,9 @@ install(
   RUNTIME DESTINATION bin
   LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib)
+if (MSVC)
+  install(FILES $<TARGET_PDB_FILE:dawg2wordlist> DESTINATION bin OPTIONAL)
+endif()
 
 # ##############################################################################
 # EXECUTABLE mftraining
@@ -212,6 +225,9 @@ if(NOT DISABLED_LEGACY_ENGINE)
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib)
+  if (MSVC)
+    install(FILES $<TARGET_PDB_FILE:mftraining> DESTINATION bin OPTIONAL)
+  endif()
 endif()
 
 # ##############################################################################
@@ -227,6 +243,9 @@ if(NOT DISABLED_LEGACY_ENGINE)
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib)
+  if (MSVC)
+     install(FILES $<TARGET_PDB_FILE:shapeclustering> DESTINATION bin OPTIONAL)
+  endif()
 endif()
 
 # ##############################################################################
@@ -241,12 +260,12 @@ install(
   RUNTIME DESTINATION bin
   LIBRARY DESTINATION lib
   ARCHIVE DESTINATION lib)
+if (MSVC)
+  install(FILES $<TARGET_PDB_FILE:wordlist2dawg> DESTINATION bin OPTIONAL)
+endif()
 
 if(ICU_FOUND)
-
-  if(NOT SW_BUILD)
-    include_directories(${ICU_INCLUDE_DIRS})
-  endif()
+  include_directories(${ICU_INCLUDE_DIRS})
 
   # ############################################################################
   # LIBRARY unicharset_training
@@ -255,15 +274,10 @@ if(ICU_FOUND)
   file(GLOB unicharset_training_src unicharset/*)
 
   add_library(unicharset_training ${unicharset_training_src})
-  if(SW_BUILD)
-    target_link_libraries(unicharset_training
-                          PUBLIC common_training org.sw.demo.unicode.icu.i18n)
+  if(PKG_CONFIG_FOUND)
+    target_link_libraries(unicharset_training PUBLIC common_training PkgConfig::ICU)
   else()
-    if(PKG_CONFIG_FOUND)
-      target_link_libraries(unicharset_training PUBLIC common_training PkgConfig::ICU)
-    else()
-      target_link_libraries(unicharset_training PUBLIC common_training ${ICU_LIBRARIES})
-    endif()
+    target_link_libraries(unicharset_training PUBLIC common_training ${ICU_LIBRARIES})
   endif()
   target_include_directories(unicharset_training
                              PUBLIC unicharset ${CMAKE_CURRENT_BINARY_DIR})
@@ -272,6 +286,9 @@ if(ICU_FOUND)
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION ${CMAKE_INSTALL_LIBDIR}
     ARCHIVE DESTINATION ${CMAKE_INSTALL_LIBDIR})
+  if (MSVC AND BUILD_SHARED_LIBS)
+    install(FILES $<TARGET_PDB_FILE:unicharset_training> DESTINATION bin OPTIONAL)
+  endif()
   generate_export_header(unicharset_training EXPORT_MACRO_NAME
                          TESS_UNICHARSET_TRAINING_API)
   project_group(unicharset_training "Training Tools")
@@ -288,32 +305,41 @@ if(ICU_FOUND)
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib)
+  if (MSVC)
+    install(FILES $<TARGET_PDB_FILE:combine_lang_model> DESTINATION bin OPTIONAL)
+  endif()
 
   # ############################################################################
   # EXECUTABLE lstmeval
   # ############################################################################
 
   add_executable(lstmeval lstmeval.cpp)
-  target_link_libraries(lstmeval unicharset_training ${LIB_pthread})
+  target_link_libraries(lstmeval unicharset_training)
   project_group(lstmeval "Training Tools")
   install(
     TARGETS lstmeval
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib)
+  if (MSVC)
+    install(FILES $<TARGET_PDB_FILE:lstmeval> DESTINATION bin OPTIONAL)
+  endif()
 
   # ############################################################################
   # EXECUTABLE lstmtraining
   # ############################################################################
 
   add_executable(lstmtraining lstmtraining.cpp)
-  target_link_libraries(lstmtraining unicharset_training ${LIB_pthread})
+  target_link_libraries(lstmtraining unicharset_training)
   project_group(lstmtraining "Training Tools")
   install(
     TARGETS lstmtraining
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib)
+  if (MSVC)
+    install(FILES $<TARGET_PDB_FILE:lstmtraining> DESTINATION bin OPTIONAL)
+  endif()
 
   # ############################################################################
   # EXECUTABLE merge_unicharsets
@@ -327,6 +353,9 @@ if(ICU_FOUND)
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib)
+  if (MSVC)
+    install(FILES $<TARGET_PDB_FILE:merge_unicharsets> DESTINATION bin OPTIONAL)
+  endif()
 
   # ############################################################################
   # EXECUTABLE set_unicharset_properties
@@ -340,6 +369,9 @@ if(ICU_FOUND)
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib)
+  if (MSVC)
+    install(FILES $<TARGET_PDB_FILE:set_unicharset_properties> DESTINATION bin OPTIONAL)
+  endif()
 
   # ############################################################################
   # EXECUTABLE unicharset_extractor
@@ -354,22 +386,22 @@ if(ICU_FOUND)
     RUNTIME DESTINATION bin
     LIBRARY DESTINATION lib
     ARCHIVE DESTINATION lib)
+  if (MSVC)
+    install(FILES $<TARGET_PDB_FILE:unicharset_extractor> DESTINATION bin OPTIONAL)
+  endif()
 
   # ############################################################################
 
-  if(PKG_CONFIG_FOUND OR SW_BUILD)
-
-    if(PKG_CONFIG_FOUND)
-      pkg_check_modules(
-        PANGO
-        REQUIRED
-        IMPORTED_TARGET
-        pango>=1.38.0
-        cairo
-        pangoft2
-        pangocairo
-        fontconfig)
-    endif()
+  if(PKG_CONFIG_FOUND)
+    pkg_check_modules(
+      PANGO
+      REQUIRED
+      IMPORTED_TARGET
+      pango>=1.38.0
+      cairo
+      pangoft2
+      pangocairo
+      fontconfig)
 
     # ##########################################################################
     # LIBRARY pango_training
@@ -379,17 +411,10 @@ if(ICU_FOUND)
 
     add_library(pango_training ${pango_training_src})
     target_link_libraries(pango_training PUBLIC unicharset_training)
-    if(SW_BUILD)
-      target_link_libraries(pango_training
-                            PUBLIC org.sw.demo.gnome.pango.pangocairo)
-    else()
-      if(PKG_CONFIG_FOUND)
-        target_include_directories(pango_training BEFORE
-                                   PUBLIC ${PANGO_INCLUDE_DIRS})
-        target_compile_definitions(pango_training PUBLIC -DPANGO_ENABLE_ENGINE)
-        target_link_libraries(pango_training PUBLIC PkgConfig::PANGO)
-      endif()
-    endif()
+    target_include_directories(pango_training BEFORE
+                               PUBLIC ${PANGO_INCLUDE_DIRS})
+    target_compile_definitions(pango_training PUBLIC -DPANGO_ENABLE_ENGINE)
+    target_link_libraries(pango_training PUBLIC PkgConfig::PANGO)
     target_include_directories(pango_training
                                PUBLIC pango ${CMAKE_CURRENT_BINARY_DIR})
     generate_export_header(pango_training EXPORT_MACRO_NAME
@@ -410,7 +435,9 @@ if(ICU_FOUND)
       RUNTIME DESTINATION bin
       LIBRARY DESTINATION lib
       ARCHIVE DESTINATION lib)
-
+    if (MSVC)
+      install(FILES $<TARGET_PDB_FILE:text2image> DESTINATION bin OPTIONAL)
+    endif()
   endif()
 endif(ICU_FOUND)
 

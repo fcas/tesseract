@@ -92,7 +92,7 @@ void BlamerBundle::SetSymbolTruth(const UNICHARSET &unicharset, const char *char
   if (id != INVALID_UNICHAR_ID) {
     std::string normed_uch(unicharset.get_normed_unichar(id));
     if (normed_uch.length() > 0) {
-      symbol_str = normed_uch;
+      symbol_str = std::move(normed_uch);
     }
   }
   int length = truth_word_.length();
@@ -466,7 +466,7 @@ bool BlamerBundle::GuidedSegsearchNeeded(const WERD_CHOICE *best_choice) const {
 #if !defined(DISABLED_LEGACY_ENGINE)
 // Setup ready to guide the segmentation search to the correct segmentation.
 void BlamerBundle::InitForSegSearch(const WERD_CHOICE *best_choice, MATRIX *ratings,
-                                    UNICHAR_ID wildcard_id, bool debug, std::string &debug_str,
+                                    bool debug, std::string &debug_str,
                                     tesseract::LMPainPoints *pain_points, double max_char_wh_ratio,
                                     WERD_RES *word_res) {
   segsearch_is_looking_for_blame_ = true;
@@ -480,8 +480,7 @@ void BlamerBundle::InitForSegSearch(const WERD_CHOICE *best_choice, MATRIX *rati
     debug_str += "col=" + std::to_string(correct_segmentation_cols_[idx]);
     debug_str += " row=" + std::to_string(correct_segmentation_rows_[idx]);
     debug_str += "\n";
-    if (!ratings->Classified(correct_segmentation_cols_[idx], correct_segmentation_rows_[idx],
-                             wildcard_id) &&
+    if (!ratings->Classified(correct_segmentation_cols_[idx], correct_segmentation_rows_[idx]) &&
         !pain_points->GeneratePainPoint(
             correct_segmentation_cols_[idx], correct_segmentation_rows_[idx],
             tesseract::LM_PPTYPE_BLAMER, 0.0, false, max_char_wh_ratio, word_res)) {

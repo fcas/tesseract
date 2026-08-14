@@ -24,7 +24,7 @@
 
 namespace tesseract {
 
-class C_OUTLINE_FRAG : public ELIST_LINK {
+class C_OUTLINE_FRAG : public ELIST<C_OUTLINE_FRAG>::LINK {
 public:
   C_OUTLINE_FRAG() { // empty constructor
     steps = nullptr;
@@ -61,8 +61,7 @@ ELISTIZEH(C_OUTLINE_FRAG)
 extern INT_VAR_H(textord_fp_chop_error);
 
 ROW *fixed_pitch_words( // find lines
-    TO_ROW *row,        // row to do
-    FCOORD rotation     // for drawing
+    TO_ROW *row         // row to do
 );
 
 void split_to_blob(                 // split the blob

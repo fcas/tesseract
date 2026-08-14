@@ -25,8 +25,6 @@
 #include <utility>
 #include "tablefind.h"
 
-#include <allheaders.h>
-
 #include "colpartitionset.h"
 #include "tablerecog.h"
 
@@ -190,8 +188,7 @@ void TableFinder::Init(int grid_size, const ICOORD &bottom_left,
 
 // Copy cleaned partitions from part_grid_ to clean_part_grid_ and
 // insert leaders and rulers into the leader_and_ruling_grid_
-void TableFinder::InsertCleanPartitions(ColPartitionGrid *grid,
-                                        TO_BLOCK *block) {
+void TableFinder::InsertCleanPartitions(ColPartitionGrid *grid) {
   // Calculate stats. This lets us filter partitions in AllowTextPartition()
   // and filter blobs in AllowBlob().
   SetGlobalSpacings(grid);
@@ -260,7 +257,7 @@ void TableFinder::InsertCleanPartitions(ColPartitionGrid *grid,
 // High level function to perform table detection
 void TableFinder::LocateTables(ColPartitionGrid *grid,
                                ColPartitionSet **all_columns,
-                               WidthCallback width_cb, const FCOORD &reskew) {
+                               WidthCallback width_cb) {
   // initialize spacing, neighbors, and columns
   InitializePartitions(all_columns);
 
@@ -884,8 +881,6 @@ bool TableFinder::HasWideOrNoInterWordGap(ColPartition *part) const {
   }
 
   // Variables used to compute inter-blob spacing.
-  int current_x0 = -1;
-  int current_x1 = -1;
   int previous_x1 = -1;
   // Stores the maximum gap detected.
   int largest_partition_gap_found = -1;
@@ -897,8 +892,8 @@ bool TableFinder::HasWideOrNoInterWordGap(ColPartition *part) const {
 
   for (it.mark_cycle_pt(); !it.cycled_list(); it.forward()) {
     BLOBNBOX *blob = it.data();
-    current_x0 = blob->bounding_box().left();
-    current_x1 = blob->bounding_box().right();
+    int current_x0 = blob->bounding_box().left();
+    int current_x1 = blob->bounding_box().right();
     if (previous_x1 != -1) {
       int gap = current_x0 - previous_x1;
 
@@ -2101,7 +2096,7 @@ void TableFinder::MakeTableBlocks(ColPartitionGrid *grid,
 //////// ColSegment code
 ////////
 ColSegment::ColSegment()
-    : ELIST_LINK(),
+    : ELIST<ColSegment>::LINK(),
       num_table_cells_(0),
       num_text_cells_(0),
       type_(COL_UNKNOWN) {}

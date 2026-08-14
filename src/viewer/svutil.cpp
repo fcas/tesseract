@@ -26,6 +26,7 @@
 
 #include "svutil.h"
 
+#include <cerrno> // for errno
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
@@ -60,8 +61,6 @@
 #ifndef GRAPHICS_DISABLED
 
 namespace tesseract {
-
-const int kMaxMsgSize = 4096;
 
 // Starts a new process.
 void SVSync::StartProcess(const char *executable, const char *args) {
@@ -170,8 +169,23 @@ void SVNetwork::Send(const char *msg) {
 void SVNetwork::Flush() {
   std::lock_guard<std::mutex> guard(mutex_send_);
   while (!msg_buffer_out_.empty()) {
-    int i = send(stream_, msg_buffer_out_.c_str(), msg_buffer_out_.length(), 0);
-    msg_buffer_out_.erase(0, i);
+    int i =
+        send(stream_, msg_buffer_out_.c_str(), msg_buffer_out_.length(), 0);
+
+    if (i < 0) {
+#ifndef _WIN32
+      if (errno == EINTR) {
+        continue;
+      }
+#endif
+      break;
+    }
+
+    if (i == 0) {
+      break;
+    }
+
+    msg_buffer_out_.erase(0, static_cast<std::string::size_type>(i));
   }
 }
 
@@ -273,8 +287,6 @@ SVNetwork::SVNetwork(const char *hostname, int port) {
 
   buffer_ptr_ = nullptr;
 
-  struct addrinfo *addr_info = nullptr;
-  struct addrinfo hints = {0, PF_INET, SOCK_STREAM};
   auto port_string = std::to_string(port);
 #  ifdef _WIN32
   // Initialize Winsock
@@ -285,6 +297,10 @@ SVNetwork::SVNetwork(const char *hostname, int port) {
   }
 #  endif // _WIN32
 
+  struct addrinfo *addr_info = nullptr;
+  struct addrinfo hints = {};
+  hints.ai_family = AF_INET;
+  hints.ai_socktype = SOCK_STREAM;
   if (getaddrinfo(hostname, port_string.c_str(), &hints, &addr_info) != 0) {
     std::cerr << "Error resolving name for ScrollView host "
               << std::string(hostname) << ":" << port << std::endl;

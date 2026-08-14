@@ -49,7 +49,7 @@ static void WriteProtos(FILE *File, uint16_t N, LIST ProtoList, bool WriteSigPro
 ----------------------------------------------------------------------------*/
 /* global variable to hold configuration parameters to control clustering */
 //-M 0.025   -B 0.05   -I 0.8   -C 1e-3
-static const CLUSTERCONFIG CNConfig = {elliptical, 0.025, 0.05, 0.8, 1e-3, 0};
+static const CLUSTERCONFIG CNConfig = {PROTOSTYLE::elliptical, 0.025, 0.05, 0.8, 1e-3, 0};
 
 /*----------------------------------------------------------------------------
               Public Code
@@ -116,7 +116,9 @@ int main(int argc, char *argv[]) {
   InitFeatureDefs(&FeatureDefs);
 
   ParseArguments(&argc, &argv);
+#if !defined(NDEBUG)
   int num_fonts = 0;
+#endif
   for (const char *PageName = *++argv; PageName != nullptr; PageName = *++argv) {
     printf("Reading %s ...\n", PageName);
     FILE *TrainingPage = fopen(PageName, "rb");
@@ -124,7 +126,9 @@ int main(int argc, char *argv[]) {
     if (TrainingPage) {
       ReadTrainingSamples(FeatureDefs, PROGRAM_FEATURE_TYPE, 100, nullptr, TrainingPage, &CharList);
       fclose(TrainingPage);
+#if !defined(NDEBUG)
       ++num_fonts;
+#endif
     }
   }
   printf("Clustering ...\n");

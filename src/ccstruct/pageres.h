@@ -115,7 +115,7 @@ public:
  * BLOCK_RES - Block results
  *************************************************************************/
 
-class BLOCK_RES : public ELIST_LINK {
+class BLOCK_RES : public ELIST<BLOCK_RES>::LINK {
 public:
   BLOCK *block;       // real block
   int32_t char_count; // chars in block
@@ -139,7 +139,7 @@ public:
  * ROW_RES - Row results
  *************************************************************************/
 
-class ROW_RES : public ELIST_LINK {
+class ROW_RES : public ELIST<ROW_RES>::LINK {
 public:
   ROW *row;                     // real row
   int32_t char_count;           // chars in block
@@ -161,7 +161,7 @@ enum CRUNCH_MODE { CR_NONE, CR_KEEP_SPACE, CR_LOOSE_SPACE, CR_DELETE };
 
 // WERD_RES is a collection of publicly accessible members that gathers
 // information about a word result.
-class TESS_API WERD_RES : public ELIST_LINK {
+class TESS_API WERD_RES : public ELIST<WERD_RES>::LINK {
 public:
   // Which word is which?
   // There are 3 coordinate spaces in use here: a possibly rotated pixel space,
@@ -345,7 +345,7 @@ public:
   }
   // Deep copies everything except the ratings MATRIX.
   // To get that use deep_copy below.
-  WERD_RES(const WERD_RES &source) : ELIST_LINK(source) {
+  WERD_RES(const WERD_RES &source) : ELIST<WERD_RES>::LINK(source) {
     // combination is used in function Clear which is called from operator=.
     combination = false;
     *this = source; // see operator=
@@ -478,7 +478,7 @@ public:
   // Set up the seam array, bln_boxes, best_choice, and raw_choice to empty
   // accumulators from a made chopped word.  We presume the fields are already
   // empty.
-  void SetupBasicsFromChoppedWord(const UNICHARSET &unicharset_in);
+  void SetupBasicsFromChoppedWord();
 
   // Sets up the members used in recognition for an empty recognition result:
   // bln_boxes, chopped_word, seam_array, denorm, best_choice, raw_choice.
